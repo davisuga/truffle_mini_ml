@@ -27,6 +27,22 @@ object Parser:
 
   import fastparse.ScalaWhitespace.whitespace
 
+  def primaryExpr[$: P]: P[Expr] = P(
+    parens | let | conditional | lambda | call | literal | identifier
+  )
+
+  def opExpr[$: P]: P[Expr] = P(
+    primaryExpr ~ (ws ~ binOp ~ ws ~ primaryExpr).rep
+  ).map { case (init, ops) =>
+    ops.foldLeft(init) { case (acc, (op, rhs)) =>
+      Call(Ident(op), List(acc, rhs))
+    }
+  }
+
+  def expr[$: P]: P[Expr] = P(ws ~ (opExpr | primaryExpr) ~ ws)
+
+  def binOp[$: P]: P[String] = P(CharsWhileIn("=!@%^&*+<>|/", min = 1).!)
+
   def identifier[$: P]: P[Ident] =
     import fastparse.NoWhitespace.noWhitespaceImplicit
     P((letter | "_") ~ (letter | digit | "_").rep).!.filter(
@@ -60,7 +76,9 @@ object Parser:
     P("if" ~ expr ~ "then" ~ expr ~ "else" ~ expr).map(If(_, _, _))
 
   def call[$: P]: P[Call] =
-    P(identifier ~ "(" ~ parameters ~ ")").map(Call(_, _))
+    P(identifier ~ (ws ~ identifier).rep(min = 1)).map((fnName, args) =>
+      Call((fnName), args.toList)
+    )
 
   def parameters[$: P]: P[List[Expr]] = P(expr.rep(sep = ",").map(_.toList))
 
@@ -81,10 +99,6 @@ object Parser:
       if idList.length > 1 then Fn(idList.tail, exp) else exp,
       body
     )
-  )
-
-  def expr[$: P]: P[Expr] = P(
-    ws ~ (parens | let | conditional | lambda | call | literal | identifier) ~ ws
   )
 
   def topLevelExpr[$: P]: P[Expr] = P(ws.? ~ (exprList | expr) ~ ws.?)
