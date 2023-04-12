@@ -3,7 +3,7 @@
 import munit.FunSuite
 import simplelang.Ast.Expr
 import simplelang.Ast.Expr.*
-import simplelang.Parser.parse
+import simplelang.Parser.parseInput
 
 class ParserTest extends FunSuite {
   // Assuming you have a `parse` function that takes a string and returns an Expr
@@ -12,25 +12,30 @@ class ParserTest extends FunSuite {
   test("parse integer literal") {
     val input = "42"
     val expected = IntLit(42)
-    assertEquals(parse(input), expected)
+    assertEquals(parseInput(input).get.value, expected)
   }
 
   test("parse string literal") {
     val input = "\"hello\""
     val expected = StrLit("hello")
-    assertEquals(parse(input), expected)
+    assertEquals(parseInput(input).get.value, expected)
   }
 
   test("parse boolean literal") {
     val input = "true"
     val expected = BoolLit(true)
-    assertEquals(parse(input), expected)
+    assertEquals(parseInput(input).get.value, expected)
   }
 
   test("parse let expression") {
     val input = "let x = 1 in x"
     val expected = Let("x", IntLit(1), Ident("x"))
-    assertEquals(parse(input), expected)
+    assertEquals(parseInput(input).get.value, expected)
+  }
+  test("parse function expression") {
+    val input = "(x) => x"
+    val expected = Fn(List("x"), Ident("x"))
+    assertEquals(parseInput(input).get.value, expected)
   }
 
   test("parse function definition and call") {
@@ -38,8 +43,8 @@ class ParserTest extends FunSuite {
     val expected = Let(
       "add",
       Fn(List("x", "y"), Call(Ident("+"), List(Ident("x"), Ident("y")))),
-      Call((Ident("add"): Expr[Int => Int => Int]), List(IntLit(1), IntLit(2)))
+      Call((Ident("add"): Expr), List(IntLit(1), IntLit(2)))
     )
-    assertEquals(parse(input), expected)
+    assertEquals(parseInput(input).get.value, expected)
   }
 }
