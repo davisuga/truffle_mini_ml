@@ -5,14 +5,33 @@ import simplelang.Ast.Expr
 import simplelang.Ast.Expr.*
 import sourcecode.Text.generate
 
+val keywordList = Set(
+  "else",
+  "if",
+  "import",
+  "in",
+  "let",
+  ""
+)
 object Parser:
-  def parseInput(input: String): Parsed[Expr] = parse(input, expr(_))
 
-  import fastparse.SingleLineWhitespace.whitespace
+  def parseInput(input: String): Parsed[Expr] =
+    parse(input, topLevelExpr(_)).value
 
   def ws[$: P]: P[Unit] = P(CharsWhileIn(" \t\r\n").?)
-
   def nl[$: P]: P[Unit] = P("\r\n" | "\n")
+  def letter[$: P] = P(lowercase | uppercase)
+  def lowercase[$: P] = P(CharIn("a-z"))
+  def uppercase[$: P] = P(CharIn("A-Z"))
+  def digit[$: P] = P(CharIn("0-9"))
+
+  import fastparse.ScalaWhitespace.whitespace
+
+  def identifier[$: P]: P[Ident] =
+    import fastparse.NoWhitespace.noWhitespaceImplicit
+    P((letter | "_") ~ (letter | digit | "_").rep).!.filter(
+      !keywordList.contains(_)
+    ).map(Ident.apply)
 
   def intLit[$: P]: P[IntLit] = P(
     CharIn("0-9").rep(1).!.map(_.toInt).map(IntLit.apply)
@@ -21,37 +40,51 @@ object Parser:
   def strLit[$: P]: P[StrLit] =
     P("\"" ~ CharsWhile(_ != '"', min = 0).! ~ "\"").map(StrLit.apply)
 
-  def expr[$: P]: P[Expr] = P(
-    conditional | let | lambda | call | literal | identifier
-  )
-
   def literal[$: P]: P[Expr] = P(intLit | strLit | boolLit)
 
   def boolLit[$: P]: P[BoolLit] =
     P(("true" | "false").!.map(_.toBoolean)).map(BoolLit.apply)
-
-  def identifier[$: P]: P[Ident] =
-    P(CharIn("a-zA-Z") ~ CharIn("a-zA-Z0-9").rep).!.map(Ident.apply)
 
   def lambda[$: P]: P[Fn] =
     P("(" ~ paramList ~ ")" ~ "=>" ~ expr).map((pList, e) =>
       Fn(pList.map(_.name), e)
     )
 
-  def parens[$: P]: P[Expr] = P("(" ~/ expr ~ ")")
+  def parens[$: P]: P[Expr] = P("(" ~ expr ~ ")")
 
   def paramList[$: P]: P[List[Ident]] = P(
-    identifier.rep(sep = ",").map(_.toList)
+    identifier.rep(1, sep = ",").map(_.toList)
   )
 
   def conditional[$: P]: P[If] =
     P("if" ~ expr ~ "then" ~ expr ~ "else" ~ expr).map(If(_, _, _))
 
   def call[$: P]: P[Call] =
-    P(identifier ~ "(" ~ exprList ~ ")").map(Call(_, _))
+    P(identifier ~ "(" ~ parameters ~ ")").map(Call(_, _))
 
-  def exprList[$: P]: P[List[Expr]] = P(expr.rep(sep = ",").map(_.toList))
+  def parameters[$: P]: P[List[Expr]] = P(expr.rep(sep = ",").map(_.toList))
+
+  def exprList[$: P]: P[ExprList] = P(
+    expr.rep(min = 1, sep = nl).map(exprs => ExprList(exprs.toList))
+  )
 
   def let[$: P]: P[Let] = P(
-    "let" ~ identifier ~ "=" ~ expr ~ (nl.rep(1) ~ "in").? ~ nl.rep ~ expr
-  ).map(Let.fromProduct)
+    "let " ~ identifier.rep(
+      min = 1,
+      sep = Pass
+    ) ~ "=" ~ expr ~ (ws ~ ("in" | nl).? ~ ws ~ expr).?
+  ).map((identifiers, exp, bodyOpt) =>
+    val idList = identifiers.toList.map(_.name)
+    val body = bodyOpt.getOrElse(ExprList(List()))
+    Let(
+      idList(0),
+      if idList.length > 1 then Fn(idList.tail, exp) else exp,
+      body
+    )
+  )
+
+  def expr[$: P]: P[Expr] = P(
+    ws ~ (parens | let | conditional | lambda | call | literal | identifier) ~ ws
+  )
+
+  def topLevelExpr[$: P]: P[Expr] = P(ws.? ~ (exprList | expr) ~ ws.?)
