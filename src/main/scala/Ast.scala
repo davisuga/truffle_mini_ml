@@ -26,3 +26,4 @@ object Ast:
     case Call(fn: Expr, args: List[Expr])
     case Let(name: String, value: Expr, body: Expr)
     case Ident(name: String)
+    case ExprList(exprs: List[Expr])
