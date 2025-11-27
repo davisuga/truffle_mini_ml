@@ -86,6 +86,20 @@ class Environment(val parent: Option[Environment] = None) {
   }
   
   def extend(): Environment = new Environment(Some(this))
+  
+  /**
+   * Get all binding names in this environment (not including parent).
+   */
+  def getLocalBindingNames: Array[String] = bindings.keys.toArray
+  
+  /**
+   * Get all binding names including parent scopes.
+   */
+  def getAllBindingNames: Array[String] = {
+    val local = bindings.keys.toSet
+    val parentNames = parent.map(_.getAllBindingNames.toSet).getOrElse(Set.empty)
+    (local ++ parentNames).toArray
+  }
 }
 
 /**
@@ -155,6 +169,13 @@ case class CallNode(fn: SimpleLangNode, args: List[SimpleLangNode]) extends Simp
       case function: SimpleFunction =>
         // Evaluate arguments in the current frame
         val evaluatedArgs = args.map(_.execute(frame))
+        
+        // Check arity
+        if (evaluatedArgs.length != function.params.length) {
+          throw new RuntimeException(
+            s"Function expects ${function.params.length} argument(s) but got ${evaluatedArgs.length}"
+          )
+        }
         
         // Create new environment extending the closure's environment
         val callEnv = function.closureEnv.extend()
@@ -305,6 +326,9 @@ case class ExprListNode(exprs: List[SimpleLangNode]) extends SimpleLangNode {
 
 // ============== Helper Functions ==============
 
+// Cached root environment to avoid recreation in loops
+private var cachedRootEnv: Environment = null
+
 /**
  * Get the environment from a frame.
  */
@@ -313,8 +337,11 @@ def getEnvironment(frame: VirtualFrame): Environment = {
   if (args.nonEmpty && args(FrameKeys.ENV_INDEX).isInstanceOf[Environment]) {
     args(FrameKeys.ENV_INDEX).asInstanceOf[Environment]
   } else {
-    // Create a root environment with builtin functions
-    createRootEnvironment()
+    // Return cached root environment or create one
+    if (cachedRootEnv == null) {
+      cachedRootEnv = createRootEnvironment()
+    }
+    cachedRootEnv
   }
 }
 

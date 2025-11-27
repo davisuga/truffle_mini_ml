@@ -203,8 +203,8 @@ class MiniMLScope(val env: Environment) extends TruffleObject {
    * Get all member names from the environment.
    */
   private def getMemberNames: Array[String] = {
-    // Return the builtin operator names
-    Array("+", "-", "*", "/", "==", "<", ">")
+    // Get actual binding names from the environment
+    env.getAllBindingNames
   }
   
   /**
