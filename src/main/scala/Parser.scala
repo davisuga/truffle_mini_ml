@@ -27,8 +27,9 @@ object Parser:
 
   import fastparse.ScalaWhitespace.whitespace
 
+  // Lambda needs to be tried before parens since both start with (
   def primaryExpr[$: P]: P[Expr] = P(
-    parens | let | conditional | lambda | call | literal | identifier
+    lambda | parens | let | conditional | call | literal | identifier
   )
 
   def opExpr[$: P]: P[Expr] = P(
@@ -41,7 +42,8 @@ object Parser:
 
   def expr[$: P]: P[Expr] = P(ws ~ (opExpr | primaryExpr) ~ ws)
 
-  def binOp[$: P]: P[String] = P(CharsWhileIn("=!@%^&*+<>|/", min = 1).!)
+  // Exclude => from binary operators since it's used for lambdas
+  def binOp[$: P]: P[String] = P(CharsWhileIn("=!@%^&*+<>|/", min = 1).!.filter(_ != "=>"))
 
   def identifier[$: P]: P[Ident] =
     import fastparse.NoWhitespace.noWhitespaceImplicit
@@ -49,9 +51,10 @@ object Parser:
       !keywordList.contains(_)
     ).map(Ident.apply)
 
-  def intLit[$: P]: P[IntLit] = P(
-    CharIn("0-9").rep(1).!.map(_.toInt).map(IntLit.apply)
-  )
+  def intLit[$: P]: P[IntLit] = {
+    import fastparse.NoWhitespace.noWhitespaceImplicit
+    P(CharIn("0-9").rep(1).!.map(_.toInt).map(IntLit.apply))
+  }
 
   def strLit[$: P]: P[StrLit] =
     P("\"" ~ CharsWhile(_ != '"', min = 0).! ~ "\"").map(StrLit.apply)
@@ -75,8 +78,13 @@ object Parser:
   def conditional[$: P]: P[If] =
     P("if" ~ expr ~ "then" ~ expr ~ "else" ~ expr).map(If(_, _, _))
 
+  // Function call argument - any atom (not opExpr to avoid operator precedence issues)
+  def callArg[$: P]: P[Expr] = P(
+    lambda | parens | literal | identifier
+  )
+
   def call[$: P]: P[Call] =
-    P(identifier ~ (ws ~ identifier).rep(min = 1)).map((fnName, args) =>
+    P(identifier ~ (ws ~ callArg).rep(min = 1)).map((fnName, args) =>
       Call((fnName), args.toList)
     )
 
@@ -101,4 +109,8 @@ object Parser:
     )
   )
 
-  def topLevelExpr[$: P]: P[Expr] = P(ws.? ~ (exprList | expr) ~ ws.?)
+  // Return single expression directly, only use ExprList for multiple expressions
+  def topLevelExpr[$: P]: P[Expr] = P(ws.? ~ expr.rep(min = 1, sep = nl) ~ ws.? ~ End).map {
+    case Seq(single) => single
+    case multiple => ExprList(multiple.toList)
+  }
