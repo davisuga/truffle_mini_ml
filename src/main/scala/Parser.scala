@@ -7,10 +7,13 @@ import sourcecode.Text.generate
 
 val keywordList = Set(
   "else",
+  "false",
   "if",
   "import",
   "in",
   "let",
+  "then",
+  "true",
   ""
 )
 object Parser:
@@ -28,8 +31,9 @@ object Parser:
   import fastparse.ScalaWhitespace.whitespace
 
   // Lambda needs to be tried before parens since both start with (
+  // conditional and let must be tried before call since they start with keywords
   def primaryExpr[$: P]: P[Expr] = P(
-    lambda | parens | let | conditional | call | literal | identifier
+    lambda | parens | conditional | let | call | literal | identifier
   )
 
   def opExpr[$: P]: P[Expr] = P(
@@ -43,7 +47,7 @@ object Parser:
   def expr[$: P]: P[Expr] = P(ws ~ (opExpr | primaryExpr) ~ ws)
 
   // Exclude => from binary operators since it's used for lambdas
-  def binOp[$: P]: P[String] = P(CharsWhileIn("=!@%^&*+<>|/", min = 1).!.filter(_ != "=>"))
+  def binOp[$: P]: P[String] = P(CharsWhileIn("=!@%^&*+\\-<>|/", min = 1).!.filter(_ != "=>"))
 
   def identifier[$: P]: P[Ident] =
     import fastparse.NoWhitespace.noWhitespaceImplicit
